@@ -112,9 +112,9 @@ public final class UserBehaviorMarketingJob {
                     .uid("parse-marketing-rule");
 
             commands = matches
-                    .connect(rules)
-                    .broadcast(MarketingRuleBroadcastFunction.RULE_STATE)
-                    .process(new MarketingRuleBroadcastFunction(decisionService))
+                    .connect(rules.broadcast(MarketingRuleBroadcastFunction.RULE_STATE))
+                    .process(new MarketingRuleBroadcastFunction(
+                            MarketingRuleBroadcastFunction.RULE_STATE, decisionService))
                     .returns(CouponPushCommand.class)
                     .name("broadcast-strategy-decision")
                     .uid("broadcast-strategy-decision");

@@ -39,7 +39,8 @@ public class MarketingRuleBroadcastFunction
 
     private final StrategyDecisionApi decisionService;
 
-    public MarketingRuleBroadcastFunction(StrategyDecisionApi decisionService) {
+    public MarketingRuleBroadcastFunction(MapStateDescriptor<String, MarketingRule> ruleState,
+                                          StrategyDecisionApi decisionService) {
         this.decisionService = decisionService;
     }
 
