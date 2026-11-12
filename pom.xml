@@ -94,6 +94,12 @@
                 <artifactId>flink-connector-kafka</artifactId>
                 <version>${flink-kafka-connector.version}</version>
             </dependency>
+            <dependency>
+                <groupId>org.apache.flink</groupId>
+                <artifactId>flink-test-utils</artifactId>
+                <version>${flink.version}</version>
+                <scope>test</scope>
+            </dependency>
 
             <dependency>
                 <groupId>com.fasterxml.jackson.core</groupId>

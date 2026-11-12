@@ -11,6 +11,9 @@ public final class KafkaTopics {
 
     public static final String COUPON_PUSH_COMMANDS = "user-coupon-push-commands";
 
+    /** JSON {@code MarketingRule} updates, broadcast to the decision operators. */
+    public static final String MARKETING_RULES = "user-marketing-rules";
+
     private KafkaTopics() {
     }
 }

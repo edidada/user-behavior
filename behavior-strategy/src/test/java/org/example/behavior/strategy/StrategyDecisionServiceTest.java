@@ -53,6 +53,18 @@ class StrategyDecisionServiceTest {
     }
 
     @Test
+    void decidesAgainstAnExplicitRuleSnapshot() {
+        StrategyDecisionService service = newService(rule(60));
+        MarketingRule other = rule(60);
+        other.setPatternName(CepPatterns.VIEW_CART_ORDER);
+
+        assertTrue(service.decide(match(CepPatterns.CART_NO_PAY_TIMEOUT),
+                List.of(other)).isEmpty());
+        assertTrue(service.decide(match(CepPatterns.CART_NO_PAY_TIMEOUT),
+                List.of(other, rule(60))).isPresent());
+    }
+
+    @Test
     void noCommandWhenCouponTemplateMissing() {
         MarketingRule broken = MarketingRule.builder()
                 .id("broken")

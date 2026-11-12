@@ -4,20 +4,20 @@ import org.apache.flink.api.common.functions.RichFlatMapFunction;
 import org.apache.flink.util.Collector;
 import org.example.behavior.domain.command.CouponPushCommand;
 import org.example.behavior.domain.result.PatternMatchResult;
-import org.example.behavior.strategy.service.StrategyDecisionService;
+import org.example.behavior.strategy.api.StrategyDecisionApi;
 
 /**
  * Bridge between the Flink stream and the plain-Java strategy engine. The job
- * depends only on {@link StrategyDecisionService}, never on rule internals.
+ * depends only on {@link StrategyDecisionApi}, never on rule internals.
  */
 public class StrategyProcessFunction
         extends RichFlatMapFunction<PatternMatchResult, CouponPushCommand> {
 
     private static final long serialVersionUID = 1L;
 
-    private final StrategyDecisionService decisionService;
+    private final StrategyDecisionApi decisionService;
 
-    public StrategyProcessFunction(StrategyDecisionService decisionService) {
+    public StrategyProcessFunction(StrategyDecisionApi decisionService) {
         this.decisionService = decisionService;
     }
 

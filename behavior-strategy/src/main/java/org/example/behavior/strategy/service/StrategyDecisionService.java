@@ -5,12 +5,13 @@ import org.example.behavior.common.util.IdempotentKeyGenerator;
 import org.example.behavior.domain.command.CouponPushCommand;
 import org.example.behavior.domain.result.PatternMatchResult;
 import org.example.behavior.domain.rule.MarketingRule;
+import org.example.behavior.strategy.api.StrategyDecisionApi;
 import org.example.behavior.strategy.cooldown.CooldownChecker;
 import org.example.behavior.strategy.coupon.CouponSelector;
 import org.example.behavior.strategy.matcher.PatternRuleMatcher;
 import org.example.behavior.strategy.repository.RuleRepository;
 
-import java.io.Serializable;
+import java.util.Collection;
 import java.util.Optional;
 
 /**
@@ -18,7 +19,7 @@ import java.util.Optional;
  * only depends on this class, so marketing rules can evolve without touching
  * the Flink topology. Pure Java, fully unit testable.
  */
-public class StrategyDecisionService implements Serializable {
+public class StrategyDecisionService implements StrategyDecisionApi {
 
     private static final long serialVersionUID = 1L;
 
@@ -47,13 +48,20 @@ public class StrategyDecisionService implements Serializable {
         this.defaultChannel = defaultChannel == null ? TriggerChannel.APP_PUSH : defaultChannel;
     }
 
+    @Override
     public Optional<CouponPushCommand> decide(PatternMatchResult match) {
+        return decide(match, ruleRepository.findAll());
+    }
+
+    @Override
+    public Optional<CouponPushCommand> decide(PatternMatchResult match,
+                                              Collection<MarketingRule> rules) {
         if (match == null || match.getUserId() == null || match.getUserId().isBlank()) {
             return Optional.empty();
         }
 
         Optional<MarketingRule> matchedRule =
-                patternRuleMatcher.match(match, ruleRepository.findAll());
+                patternRuleMatcher.match(match, rules);
         if (matchedRule.isEmpty()) {
             return Optional.empty();
         }

@@ -59,4 +59,9 @@ public final class JobConfig {
         String value = properties.getProperty(key);
         return value == null ? defaultValue : Long.parseLong(value.trim());
     }
+
+    public boolean getBoolean(String key, boolean defaultValue) {
+        String value = properties.getProperty(key);
+        return value == null ? defaultValue : Boolean.parseBoolean(value.trim());
+    }
 }

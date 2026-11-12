@@ -9,19 +9,23 @@ import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.windowing.assigners.SlidingEventTimeWindows;
 import org.apache.flink.streaming.api.windowing.time.Time;
 import org.example.behavior.common.constant.KafkaTopics;
+import org.example.behavior.common.util.JsonUtils;
 import org.example.behavior.domain.command.CouponPushCommand;
 import org.example.behavior.domain.event.UserBehaviorEvent;
 import org.example.behavior.domain.profile.UserValueProfile;
 import org.example.behavior.domain.result.PatternMatchResult;
+import org.example.behavior.domain.rule.MarketingRule;
 import org.example.behavior.job.aggregate.ProfileWindowFunction;
 import org.example.behavior.job.aggregate.SpendAggregateFunction;
 import org.example.behavior.job.cep.CepPatternDetector;
 import org.example.behavior.job.function.CartAbandonmentFunction;
 import org.example.behavior.job.function.StrategyProcessFunction;
+import org.example.behavior.job.rule.MarketingRuleBroadcastFunction;
 import org.example.behavior.sink.CouponPushSink;
 import org.example.behavior.sink.RedisProfileSink;
 import org.example.behavior.source.function.BehaviorNormalizer;
 import org.example.behavior.source.source.BehaviorKafkaSource;
+import org.example.behavior.source.source.RuleKafkaSource;
 import org.example.behavior.source.watermark.BehaviorWatermarkStrategies;
 import org.example.behavior.strategy.cooldown.InMemoryCooldownChecker;
 import org.example.behavior.strategy.coupon.DefaultCouponSelector;
@@ -91,11 +95,36 @@ public final class UserBehaviorMarketingJob {
 
         StrategyDecisionService decisionService = buildDecisionService();
 
-        DataStream<CouponPushCommand> commands = matches
-                .flatMap(new StrategyProcessFunction(decisionService))
-                .returns(CouponPushCommand.class)
-                .name("strategy-decision")
-                .uid("strategy-decision");
+        DataStream<CouponPushCommand> commands;
+        if (config.getBoolean("rules.broadcast.enabled", false)) {
+            // Rules are loaded from Kafka and broadcast, so rule changes apply
+            // without restarting the job.
+            KafkaSource<String> ruleSource = RuleKafkaSource.build(
+                    config.get("kafka.brokers", "localhost:9092"),
+                    config.get("kafka.rule.topic", KafkaTopics.MARKETING_RULES),
+                    config.get("kafka.group.id", "user-behavior-marketing") + "-rules");
+
+            DataStream<MarketingRule> rules = env
+                    .fromSource(ruleSource, WatermarkStrategy.noWatermarks(), "marketing-rule-source")
+                    .map(json -> JsonUtils.fromJson(json, MarketingRule.class))
+                    .returns(MarketingRule.class)
+                    .name("parse-marketing-rule")
+                    .uid("parse-marketing-rule");
+
+            commands = matches
+                    .connect(rules)
+                    .broadcast(MarketingRuleBroadcastFunction.RULE_STATE)
+                    .process(new MarketingRuleBroadcastFunction(decisionService))
+                    .returns(CouponPushCommand.class)
+                    .name("broadcast-strategy-decision")
+                    .uid("broadcast-strategy-decision");
+        } else {
+            commands = matches
+                    .flatMap(new StrategyProcessFunction(decisionService))
+                    .returns(CouponPushCommand.class)
+                    .name("strategy-decision")
+                    .uid("strategy-decision");
+        }
 
         commands.addSink(new CouponPushSink(
                         config.get("redis.host", "localhost"),
