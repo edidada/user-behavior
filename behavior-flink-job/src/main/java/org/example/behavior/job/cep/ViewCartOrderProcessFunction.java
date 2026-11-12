@@ -6,6 +6,7 @@ import org.example.behavior.common.constant.CepPatterns;
 import org.example.behavior.domain.event.UserBehaviorEvent;
 import org.example.behavior.domain.result.PatternMatchResult;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -32,7 +33,7 @@ public class ViewCartOrderProcessFunction
                 .map(UserBehaviorEvent::getSkuId)
                 .filter(Objects::nonNull)
                 .distinct()
-                .toList();
+                .collect(java.util.stream.Collectors.toCollection(ArrayList::new));
 
         out.collect(PatternMatchResult.builder()
                 .userId(order.getUserId())

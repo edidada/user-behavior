@@ -11,6 +11,7 @@ import org.example.behavior.common.enums.BehaviorType;
 import org.example.behavior.domain.event.UserBehaviorEvent;
 import org.example.behavior.domain.result.PatternMatchResult;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -87,7 +88,9 @@ public class CartAbandonmentFunction
                 .patternName(CepPatterns.CART_NO_PAY_TIMEOUT)
                 .matchedAt(timestamp)
                 .detail("cart without payment after " + timeoutMillis + "ms")
-                .matchedSkuIds(skuId == null ? List.of() : List.of(skuId))
+                .matchedSkuIds(skuId == null
+                        ? new ArrayList<>()
+                        : new ArrayList<>(List.of(skuId)))
                 .build());
         timerState.clear();
         skuState.clear();
