@@ -94,6 +94,14 @@
                 <artifactId>flink-connector-kafka</artifactId>
                 <version>${flink-kafka-connector.version}</version>
             </dependency>
+            <!-- KafkaSink's DeliveryGuarantee lives here. The Kafka connector
+                 declares it as provided, so it is not transitive: modules that
+                 reference it directly must declare it themselves. -->
+            <dependency>
+                <groupId>org.apache.flink</groupId>
+                <artifactId>flink-connector-base</artifactId>
+                <version>${flink.version}</version>
+            </dependency>
             <dependency>
                 <groupId>org.apache.flink</groupId>
                 <artifactId>flink-test-utils</artifactId>

@@ -21,13 +21,16 @@ import org.example.behavior.job.cep.CepPatternDetector;
 import org.example.behavior.job.function.CartAbandonmentFunction;
 import org.example.behavior.job.function.StrategyProcessFunction;
 import org.example.behavior.job.rule.MarketingRuleBroadcastFunction;
+import org.example.behavior.sink.CouponCommandKafkaSink;
 import org.example.behavior.sink.CouponPushSink;
 import org.example.behavior.sink.RedisProfileSink;
 import org.example.behavior.source.function.BehaviorNormalizer;
 import org.example.behavior.source.source.BehaviorKafkaSource;
 import org.example.behavior.source.source.RuleKafkaSource;
 import org.example.behavior.source.watermark.BehaviorWatermarkStrategies;
+import org.example.behavior.strategy.cooldown.CooldownChecker;
 import org.example.behavior.strategy.cooldown.InMemoryCooldownChecker;
+import org.example.behavior.strategy.cooldown.RedisCooldownChecker;
 import org.example.behavior.strategy.coupon.DefaultCouponSelector;
 import org.example.behavior.strategy.matcher.PatternRuleMatcher;
 import org.example.behavior.strategy.repository.InMemoryRuleRepository;
@@ -93,7 +96,7 @@ public final class UserBehaviorMarketingJob {
 
         DataStream<PatternMatchResult> matches = cepMatches.union(timerMatches);
 
-        StrategyDecisionService decisionService = buildDecisionService();
+        StrategyDecisionService decisionService = buildDecisionService(config);
 
         DataStream<CouponPushCommand> commands;
         if (config.getBoolean("rules.broadcast.enabled", false)) {
@@ -126,12 +129,19 @@ public final class UserBehaviorMarketingJob {
                     .uid("strategy-decision");
         }
 
-        commands.addSink(new CouponPushSink(
-                        config.get("redis.host", "localhost"),
-                        config.getInt("redis.port", 6379),
-                        config.get("coupon.endpoint", "http://localhost:8080/api/coupons/push")))
-                .name("coupon-push-sink")
-                .uid("coupon-push-sink");
+        String pushMode = config.get("coupon.push.mode", "http");
+        if ("kafka".equalsIgnoreCase(pushMode)) {
+            CouponCommandKafkaSink.attach(commands,
+                    config.get("kafka.brokers", "localhost:9092"),
+                    config.get("kafka.coupon.topic", KafkaTopics.COUPON_PUSH_COMMANDS));
+        } else {
+            commands.addSink(new CouponPushSink(
+                            config.get("redis.host", "localhost"),
+                            config.getInt("redis.port", 6379),
+                            config.get("coupon.endpoint", "http://localhost:8080/api/coupons/push")))
+                    .name("coupon-push-sink")
+                    .uid("coupon-push-sink");
+        }
 
         // ---------------- Link B: spending aggregation -------------------------
         SingleOutputStreamOperator<UserValueProfile> hourlyProfiles = keyed
@@ -160,13 +170,19 @@ public final class UserBehaviorMarketingJob {
         env.execute("user-behavior-marketing");
     }
 
-    private static StrategyDecisionService buildDecisionService() {
+    private static StrategyDecisionService buildDecisionService(JobConfig config) {
         RuleRepository ruleRepository =
                 new InMemoryRuleRepository(DefaultRules.initialRules());
+        CooldownChecker cooldownChecker =
+                config.getBoolean("cooldown.redis.enabled", false)
+                        ? new RedisCooldownChecker(
+                                config.get("redis.host", "localhost"),
+                                config.getInt("redis.port", 6379))
+                        : new InMemoryCooldownChecker();
         return new StrategyDecisionService(
                 ruleRepository,
                 new PatternRuleMatcher(),
                 new DefaultCouponSelector(),
-                new InMemoryCooldownChecker());
+                cooldownChecker);
     }
 }

@@ -141,7 +141,7 @@ behavior-common ← behavior-domain ← behavior-strategy
 </dependency>
 ```
 
-**`behavior-strategy` 刻意不引 Flink**，只依赖 domain + Redis client（冷却检查）。
+**`behavior-strategy` 刻意不引 Flink**，只依赖 domain + Redis client（`RedisCooldownChecker` 的 SETNX 冷却）。
 
 **`behavior-app` Shade 排除 Flink 核心**，只打业务模块 + 连接器 + Redis client。
 
@@ -219,7 +219,7 @@ mvn clean package -DskipTests
 behavior-app/target/behavior-app-1.0.0-SNAPSHOT.jar
 ```
 
-**提交作业**（Flink 集群已提供 `flink-streaming-java` / `flink-cep`）：
+**提交作业**（Flink 集群已提供 `flink-streaming-java` / `flink-cep`，也可用 `behavior-app/scripts/submit-job.sh`）：
 
 ```bash
 flink run -c org.example.behavior.app.UserBehaviorMarketingJob \
@@ -228,6 +228,14 @@ flink run -c org.example.behavior.app.UserBehaviorMarketingJob \
   --redis.host=redis \
   --coupon.endpoint=http://coupon-service/api/coupons/push
 ```
+
+**运行模式开关**（全部可用命令行覆盖）：
+
+| 配置 | 默认 | 说明 |
+|------|------|------|
+| `rules.broadcast.enabled` | `false` | `true` 时从 `kafka.rule.topic` 广播加载 `MarketingRule`，改规则无需重启作业 |
+| `cooldown.redis.enabled` | `false` | `true` 时用 Redis SETNX 做全局触达冷却，否则用进程内冷却（仅本地/测试） |
+| `coupon.push.mode` | `http` | `http` 调优惠券 API；`kafka` 时发往 `KafkaTopics.COUPON_PUSH_COMMANDS` |
 
 配置优先级：命令行 `--key=value` > `behavior-app/src/main/resources/application.properties`。
 
