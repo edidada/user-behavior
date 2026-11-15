@@ -240,3 +240,9 @@ flink run -c org.example.behavior.app.UserBehaviorMarketingJob \
 配置优先级：命令行 `--key=value` > `behavior-app/src/main/resources/application.properties`。
 
 **CI**：`.github/workflows/ci.yml` 在 push / PR 时执行 `mvn verify`，并把 fat-jar 作为构建产物上传。
+
+---
+
+## 十、文档
+
+更多细节见 [docs/](docs/README.md)：[详细设计](docs/design.md) · [部署](docs/deployment.md) · [运维 SOP](docs/operations.md) · [如何复现](docs/reproduce.md)。
