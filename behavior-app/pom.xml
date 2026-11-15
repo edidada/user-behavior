@@ -54,6 +54,14 @@
             <artifactId>flink-connector-base</artifactId>
             <scope>provided</scope>
         </dependency>
+        <!-- SLF4J backend for local (IDE / bare java) runs only: without it
+             slf4j falls back to NOP and a failing job logs nothing. Test scope
+             keeps the fat-jar clean (the Flink cluster ships its own backend). -->
+        <dependency>
+            <groupId>org.apache.logging.log4j</groupId>
+            <artifactId>log4j-slf4j-impl</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>
