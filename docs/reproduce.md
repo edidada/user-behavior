@@ -11,6 +11,7 @@
 | Maven 3.9+ | 需已安装 | `mvn verify` 构建 |
 | Kafka 4.4 | `D:\develops\kafka\kafka_2.13-4.4.0`，broker 运行中（KRaft，无需 ZooKeeper） | 直接连 `localhost:9092`，只建 topic |
 | Redis | 127.0.0.1:6379 运行中 | 直接使用；画像/幂等/冷却都写它 |
+| MySQL 8.4 | 127.0.0.1:3306 运行中（可选） | `rules.repository=mysql` 时使用，见 §10 |
 | IDE | IntelliJ IDEA | 运行 main（provided 依赖在 IDE 运行类路径中可用） |
 
 快速自检：
@@ -58,6 +59,31 @@ mvn clean verify
 - `coupon.push.mode=kafka`：本地没有优惠券服务，把触达指令发到 `user-coupon-push-commands`，用 console consumer 直接观察（默认 http 会去打 8080 报错）
 
 > 若想完整验证 Redis 冷却链路再加 `--cooldown.redis.enabled=true`。
+
+### 3.1 无 IDE：裸 `java -cp` 运行（两个必踩的坑）
+
+本地没有 IDE 时，用 test classpath（含 provided 的 Flink 核心）直接跑 main。**两个坑**：
+
+1. **JDK 17 必须 `--add-opens`**：Flink 的 Kryo/Chill 序列化器首次使用时反射注册集合序列化器，缺 `--add-opens java.base/java.util=ALL-UNNAMED` 会在第一次输出匹配结果（跨网络序列化）时抛 `InaccessibleObjectException`，作业陷入静默重启循环（Flink 发行版的启动脚本会自动加这些参数，裸 java 不会）。
+2. **SLF4J 无后端 = 全程静默**：工程只依赖 `slf4j-api`，本地运行时挂上 log4j2（本地仓库有 2.17.2），否则出问题连堆栈都看不到。
+
+完整启动命令（Git Bash，路径按需替换）：
+
+```bash
+REPO=D:/develops/maven/mavenrepository
+export MYSQL_PASSWORD=...   # rules.repository=mysql 时需要
+CP="behavior-app/target/classes;$REPO/org/apache/logging/log4j/log4j-core/2.17.2/log4j-core-2.17.2.jar;$REPO/org/apache/logging/log4j/log4j-api/2.17.2/log4j-api-2.17.2.jar;$REPO/org/apache/logging/log4j/log4j-slf4j-impl/2.17.2/log4j-slf4j-impl-2.17.2.jar;$(cat behavior-app/target/cp.txt)"
+java --add-opens=java.base/java.lang=ALL-UNNAMED --add-opens=java.base/java.util=ALL-UNNAMED \
+     --add-opens=java.base/java.io=ALL-UNNAMED --add-opens=java.base/java.lang.invoke=ALL-UNNAMED \
+     --add-opens=java.base/java.lang.reflect=ALL-UNNAMED --add-opens=java.base/java.net=ALL-UNNAMED \
+     -cp "$CP" org.example.behavior.app.UserBehaviorMarketingJob ...
+```
+
+其中 `cp.txt` 由 `mvn -pl behavior-app dependency:build-classpath -Dmdep.outputFile=target/cp.txt -Dmdep.classpathScope=test` 生成（test scope 才会把 provided 的 Flink 核心带进来）。
+
+排障时的诊断技巧（本次实战验证有效）：
+- 消费组"无活跃成员"但位移已提交 = 作业在重启循环，去日志找 `switched from RUNNING to FAILED`
+- `jstack <pid>` 看算子线程是否阻塞；`jps -l` 确认没有旧作业僵尸进程残留
 
 ## 4. 造事件并验证链路 A（模式检测 → 优惠券）
 
@@ -148,6 +174,7 @@ redis-cli ZREVRANGE user:highvalue:rank 0 -1 WITHSCORES
 | 窗口画像迟迟不出 | 水位线没推进：再发一条时间戳更新的事件即可（窗口按 event time 触发） |
 | 重新跑想从头消费 | 消费组已有 checkpoint 位移；改 `--kafka.group.id=u1-test-2`，或停作业后 `kafka-consumer-groups.bat --reset-offsets --to-earliest --topic user-behavior-events --execute` |
 | IDE 运行报找不到 Flink 类 | 确认用的是 `behavior-app` 模块的 main；`flink-clients` 是 provided，IDE 默认包含，若用 `mvn exec` 需临时改 compile |
+| 控制台工具"找不到主类" | Kafka 4.x 类名变了：消费组命令是 `org.apache.kafka.tools.consumer.group.ConsumerGroupCommand`，console consumer 是 `org.apache.kafka.tools.consumer.ConsoleConsumer`；且别把 stderr 丢掉 |
 
 ## 8. 跑单元测试（无需外部依赖）
 
@@ -160,3 +187,30 @@ mvn verify
 ## 9. 提交到真实 Flink 集群
 
 见 `deployment.md` §2–3（fat-jar + `flink run` 或 `behavior-app/scripts/submit-job.sh`）。
+
+## 10. MySQL 8 规则库增删改（可选）
+
+`MysqlRuleRepository` 实现了规则的增（insert）、删（delete）、改（update）、查（findAll/findById），strategy 模块保持零 Flink 依赖。
+
+**建库**（凭据不落仓库，密码走环境变量）：
+
+```bash
+# 1. 设置用户环境变量（一次性，之后新开的终端都能读到）
+setx MYSQL_PASSWORD "<你的密码>"
+
+# 2. 建库建表 + 导入两条种子规则（脚本不含密码）
+mysql -uroot -p < docs/mysql-schema.sql
+```
+
+**运行 CRUD 测试**（无 `MYSQL_PASSWORD` 时自动跳过，CI 安全）：
+
+```bash
+export MYSQL_PASSWORD=<你的密码>
+mvn -pl behavior-strategy test -Dtest=MysqlRuleRepositoryTest
+```
+
+测试内容即完整增删改流程：insert → findById 校验 → 改券模板/优先级/人群 → 删除 → 确认 0 行；含 `audienceLevels` JSON 列往返和主键冲突校验。
+
+**作业使用 MySQL 规则库**：启动参数加 `--rules.repository=mysql`（密码自动读 `MYSQL_PASSWORD`）。作业启动时 `findAll()` 加载全部启用规则；之后对表做增删改不会自动生效（静态模式仅启动时读一次）——运行期变更请走 §6 的广播模式。
+
+> 手工对规则做增删改：直接用本机 `D:\develops\mysql-8.4.8-winx64\bin\mysql.exe -uroot -p` 进库执行 `INSERT/UPDATE/DELETE`，表结构见 `docs/mysql-schema.sql`；或调用 `MysqlRuleRepository` 的对应方法。

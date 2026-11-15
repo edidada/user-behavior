@@ -34,6 +34,7 @@ import org.example.behavior.strategy.cooldown.RedisCooldownChecker;
 import org.example.behavior.strategy.coupon.DefaultCouponSelector;
 import org.example.behavior.strategy.matcher.PatternRuleMatcher;
 import org.example.behavior.strategy.repository.InMemoryRuleRepository;
+import org.example.behavior.strategy.repository.MysqlRuleRepository;
 import org.example.behavior.strategy.repository.RuleRepository;
 import org.example.behavior.strategy.service.StrategyDecisionService;
 
@@ -50,6 +51,10 @@ import java.time.Duration;
  * </ul>
  */
 public final class UserBehaviorMarketingJob {
+
+    private static final String DEFAULT_MYSQL_URL =
+            "jdbc:mysql://localhost:3306/user_behavior"
+                    + "?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai";
 
     private UserBehaviorMarketingJob() {
     }
@@ -171,8 +176,18 @@ public final class UserBehaviorMarketingJob {
     }
 
     private static StrategyDecisionService buildDecisionService(JobConfig config) {
-        RuleRepository ruleRepository =
-                new InMemoryRuleRepository(DefaultRules.initialRules());
+        RuleRepository ruleRepository;
+        if ("mysql".equalsIgnoreCase(config.get("rules.repository", "memory"))) {
+            // MySQL 8 backed rule store with CRUD; the password is resolved
+            // from the MYSQL_PASSWORD environment variable (or an explicit
+            // --mysql.password=... override) and never lives in this repo.
+            ruleRepository = new MysqlRuleRepository(
+                    config.get("mysql.url", DEFAULT_MYSQL_URL),
+                    config.get("mysql.user", "root"),
+                    mysqlPassword(config));
+        } else {
+            ruleRepository = new InMemoryRuleRepository(DefaultRules.initialRules());
+        }
         CooldownChecker cooldownChecker =
                 config.getBoolean("cooldown.redis.enabled", false)
                         ? new RedisCooldownChecker(
@@ -184,5 +199,10 @@ public final class UserBehaviorMarketingJob {
                 new PatternRuleMatcher(),
                 new DefaultCouponSelector(),
                 cooldownChecker);
+    }
+
+    private static String mysqlPassword(JobConfig config) {
+        String fromConfig = config.get("mysql.password", "");
+        return fromConfig.isBlank() ? System.getenv("MYSQL_PASSWORD") : fromConfig;
     }
 }

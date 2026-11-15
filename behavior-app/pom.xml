@@ -41,6 +41,19 @@
             <artifactId>flink-clients</artifactId>
             <scope>provided</scope>
         </dependency>
+        <!-- Provided by the cluster at runtime; declared here because they are
+             not transitive from flink-job/sink and local (IDE / java -cp) runs
+             need them on the classpath. -->
+        <dependency>
+            <groupId>org.apache.flink</groupId>
+            <artifactId>flink-cep</artifactId>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.flink</groupId>
+            <artifactId>flink-connector-base</artifactId>
+            <scope>provided</scope>
+        </dependency>
     </dependencies>
 
     <build>

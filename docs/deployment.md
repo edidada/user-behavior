@@ -11,6 +11,7 @@
 | Flink | 1.18.x | 集群/本地运行时，需自带 `flink-streaming-java`、`flink-clients`、`flink-cep`、`flink-connector-base`（flink-dist 默认包含） |
 | Kafka | 3.x / 4.x | 已验证 4.4（KRaft）；Flink connector 3.1.0-1.18 自带 kafka-clients 3.2.x，协议向下兼容 |
 | Redis | 5+ | 画像 / 高价值排名 / 幂等 / 冷却（冷却可用进程内模式替代） |
+| MySQL 8 | 可选 | `rules.repository=mysql` 时作为营销规则库；表结构见 `docs/mysql-schema.sql` |
 
 > 注意：fat-jar shade 时排除了 `flink-streaming-java` 与 `flink-clients`，但**包含** connector-kafka 与 jedis。若集群 lib 缺少 `flink-connector-base`，Kafka sink 模式启动会报 `NoClassDefFoundError: .../DeliveryGuarantee`，此时把 `behavior-sink/pom.xml` 中该依赖的 `provided` 改为 compile 重新打包即可。
 
@@ -73,6 +74,9 @@ flink run -s hdfs:///flink/savepoints/savepoint-xxxx -c org.example.behavior.app
 | `kafka.rule.topic` | `user-marketing-rules` | 规则广播 topic |
 | `kafka.coupon.topic` | `user-coupon-push-commands` | Kafka 触达 topic |
 | `rules.broadcast.enabled` | `false` | `true` 时从 Kafka 广播加载规则，改规则不重启作业 |
+| `rules.repository` | `memory` | `mysql` 时从 MySQL 8 加载规则（表见 `docs/mysql-schema.sql`）；密码读 `MYSQL_PASSWORD` 环境变量，或 `--mysql.password=...` 显式覆盖 |
+| `mysql.url` | `jdbc:mysql://localhost:3306/user_behavior?...` | MySQL 连接串 |
+| `mysql.user` | `root` | MySQL 用户 |
 | `cooldown.redis.enabled` | `false` | `true` 用 Redis SETNX 全局冷却；`false` 进程内冷却（多并行度下不严格） |
 | `redis.host` / `redis.port` | `localhost` / `6379` | Redis 地址 |
 | `coupon.push.mode` | `http` | `http` 调 REST API；`kafka` 发到触达 topic |
@@ -85,6 +89,7 @@ flink run -s hdfs:///flink/savepoints/savepoint-xxxx -c org.example.behavior.app
 ## 5. 上线前置检查
 
 - [ ] 三个 topic 已创建（见 `reproduce.md` §2）：`user-behavior-events`、`user-coupon-push-commands`，开广播再加 `user-marketing-rules`
+- [ ] 用 MySQL 规则库：`user_behavior.marketing_rule` 表已建、种子规则已导入（`docs/mysql-schema.sql`），作业环境已注入 `MYSQL_PASSWORD`
 - [ ] Redis 可连通且持久化策略明确（画像数据可接受丢失重建）
 - [ ] 优惠券服务可用，或确认使用 `coupon.push.mode=kafka`
 - [ ] 首次启动消费组无历史位移：源以 `committedOffsets(EARLIEST)` 兜底；**升级重启时注意消费组已有 checkpoint 位移，不会重复消费**

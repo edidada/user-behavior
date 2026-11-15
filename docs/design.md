@@ -85,6 +85,7 @@ behavior-common ← behavior-domain ← behavior-strategy
 | `SpendAggregateFunction` | flink-job | 增量累加：ORDER 计数、PAY 计数与金额（null 金额按 0） |
 | `ProfileWindowFunction` | flink-job | 24h 链路填客单价、`UserLevel`；1h 链路只填 `amount1h` |
 | `StrategyProcessFunction` | flink-job | 静态规则模式下的桥接：调用 `StrategyDecisionApi` |
+| `MysqlRuleRepository` | strategy | MySQL 8 规则库增删改查（insert/update/delete/findAll），每次操作独立短连接；密码由调用方传入（环境变量），strategy 保持零 Flink 依赖 |
 | `MarketingRuleBroadcastFunction` | flink-job | 广播流模式：规则存 `MapState`，enabled=false 表示删除规则 |
 | `StrategyDecisionService` | strategy | 编排：匹配规则 → 选券 → 冷却 → 组装指令 |
 | `PatternRuleMatcher` | strategy | enabled + patternName（`*` 通配）+ audienceLevels 过滤，取 priority 最高 |
@@ -160,7 +161,7 @@ behavior-common ← behavior-domain ← behavior-strategy
 | 需求 | 改动位置 |
 |------|---------|
 | 新检测模式 | `CepPatterns` 加常量 + flink-job 新增检测函数，输出同名 patternName |
-| 新营销规则 | 广播 topic 发 `MarketingRule` JSON（或改 `DefaultRules`）；无需改代码 |
+| 新营销规则 | 广播 topic 发 `MarketingRule` JSON（或改 `DefaultRules` / 直接对 MySQL 表增删改）；无需改代码 |
 | 券库存/预算 | 实现 `CouponSelector` 新实现替换 `DefaultCouponSelector` |
 | 优惠券推送渠道 | `coupon.push.mode` 加分支，或实现新的 sink |
 | 规则持久化 | 实现 `RuleRepository`（当前仅 `InMemoryRuleRepository`），接 DB/配置中心 |
@@ -172,3 +173,6 @@ behavior-common ← behavior-domain ← behavior-strategy
 - `DefaultCouponSelector` 不检查券库存/预算
 - 消费金额用 `double` 累加（`SpendAccumulator`），对营销画像够用，若做对账需改为 long 分单位
 - 广播规则在作业重启后从 topic 重新消费（LATEST 起点意味着重启后需重发全量规则，或改为 EARLIEST/持久化）
+- `rules.repository=mysql` 静态模式下，`StrategyDecisionService` 每次命中模式都会调 `findAll()` 查库（每次一条短连接）；规则量大或流量高时应使用广播模式，或给 repository 加 TTL 缓存
+- `PatternMatchResult.matchedSkuIds`（List 字段）走 Kryo GenericType 序列化，JDK 17 下本地运行必须加 `--add-opens`（见 reproduce.md §3）；如需彻底摆脱 Kryo 可把该字段改为 `String[]`
+- MySQL 密码不落任何文件：从 `MYSQL_PASSWORD` 环境变量读取，`application.properties` 只留 `mysql.user`
